@@ -140,7 +140,6 @@ class Cryptcp(ShellCommand):
     def verify(self, sgn_dir, cert_filename, filename, errchain=True):
         """
         Проверяет электронную подпись.
-        Файл подписи и подписываемый файл должны находиться в каталоге dir.
 
         :param sgn_dir: путь к каталогу с подписью
         :param cert_filename: имя файла с сертификатом
