@@ -1,7 +1,9 @@
 # coding: utf-8
 
 from subprocess import Popen, PIPE
+from .exceptions import *
 import re
+import os
 
 
 class ShellCommand(object):
@@ -11,16 +13,23 @@ class ShellCommand(object):
 
     binary = None
 
-    def run_command(self, command, **kwargs):
+    def run_command(self, command, *args, **kwargs):
         """
         Выполняет комманду shell
         """
-        params = ' '.join(['-%s %s' % (k, v) for k, v in kwargs.items() if v is not None])
-        cmd = ' '.join([self.binary, command, params])
+        params = ' '.join(args)
+        named_params = ' '.join(['-%s %s' % (k, v) for k, v in kwargs.items() if v is not None])
+        cmd = ' '.join([self.binary, command, params, named_params])
         proc = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
-        content, stderr = proc.communicate()
+        return self._parse_response(*proc.communicate())
 
-        return content, stderr
+    def _parse_response(self, stdout, stderr):
+        if stderr:
+            if stderr.startswith('Empty certificate list'):
+                return None
+            else:
+                raise ShellCommandError(stderr)
+        return stdout
 
 
 class Certmgr(ShellCommand):
@@ -31,40 +40,44 @@ class Certmgr(ShellCommand):
     def __init__(self, binary='/opt/cprocsp/bin/amd64/certmgr'):
         self.binary = binary
 
-    def list(self, **kwargs):
+    def list(self, *args, **kwargs):
         """
         Возвращает список сертификатов
         """
-        stdout, stderr = self.run_command('-list', **kwargs)
-        if stderr:
-            return [], stderr
-        return self._parse(stdout), None
+        limit = kwargs.pop('limit', None)
+        stdout = self.run_command('-list', *args, **kwargs)
+        if stdout:
+            return self._parse(stdout, limit)
+        return []
 
-    def inst(self, **kwargs):
+    def inst(self, *args, **kwargs):
         """
         Устанавливает сертификат
         """
         return self.run_command('-inst', **kwargs)
 
-    def delete(self, **kwargs):
+    def delete(self, *args, **kwargs):
         """
         Удаляет сертификат
         """
         return self.run_command('-delete', **kwargs)
 
-    def cert_info(self, thumbprint):
+    def get(self, thumbprint, store='My'):
         """
         Возвращает информацию о сертификате
         """
+        res = self.list(thumbprint=thumbprint, store=store)
+        if res:
+            return res[0]
 
-    def _parse(self, text):
+    def _parse(self, text, limit=None):
         """
         Преобразует текстовые данные в словарь
         """
         res = []
-        sep = re.compile(r'\d-{7}')
+        sep = re.compile(r'\d+-{7}')
 
-        for item in sep.split(text)[1:]:
+        for i, item in enumerate(sep.split(text)[1:], start=1):
             cert_data = {}
             for line in item.split('\n'):
                 if line == '':
@@ -77,6 +90,9 @@ class Certmgr(ShellCommand):
                 cert_data[key] = val
 
             res.append(cert_data)
+
+            if limit and i == limit:
+                break
 
         return res
 
@@ -103,17 +119,54 @@ class Cryptcp(ShellCommand):
     def __init__(self, binary='/opt/cprocsp/bin/amd64/cryptcp'):
         self.binary = binary
 
-    def vsignf(self, filename, dir=None):
+    def _parse_response(self, stdout, stderr):
+        if '[ReturnCode: 0]' in stdout:
+            return stdout
+
+        match = re.search(r'ErrorCode: (.+)]', stdout)
+        if match:
+            error_code = match.group(1)
+            if error_code == '0x20000133':
+                raise CertificateChainNotChecked(stdout)
+
+            if error_code == '0x200001F9':
+                raise InvalidSignature(stdout)
+
+        raise ShellCommandError(stdout)
+
+    def vsignf(self, *args, **kwargs):
+        self.run_command('-vsignf', *args, **kwargs)
+
+    def verify(self, sgn_dir, cert_filename, filename, errchain=True):
         """
-        Проверяет электронную подпись
+        Проверяет электронную подпись.
+        Файл подписи и подписываемый файл должны находиться в каталоге dir.
+
+        :param sgn_dir: путь к каталогу с подписью
+        :param cert_filename: имя файла с сертификатом
+        :param filename: имя подписываемого файла
+        :param errchain: кидать ошибку если не удалось проверить хотя бы один элемент цепочки
         """
 
+        file_path = os.path.join(sgn_dir, filename)
+        args = [file_path]
 
-if __name__ == '__main__':
-    certmgr = Certmgr()
-    # stdout, stderr = certmgr.delete(thumbprint='5B0345AE6874A205DC78333928FF3F1189B3BFA8'.lower(), store='root')
-    r, e = certmgr.list(store='root')
-    # stdout, stderr = certmgr.inst(file='/home/uishnik/root_cert.cer', store='root')
-    import json
-    print json.dumps(r, indent=4, ensure_ascii=False)
-    print e
+        if errchain:
+            args.append('-errchain')
+        else:
+            args.append('-nochain')
+
+        kwargs = {
+            'dir': sgn_dir,
+            'f': os.path.join(sgn_dir, cert_filename)
+        }
+
+        try:
+            self.run_command('-vsignf', *args, **kwargs)
+        except CertificateChainNotChecked:
+            return False
+
+        except InvalidSignature:
+            return False
+
+        return True
