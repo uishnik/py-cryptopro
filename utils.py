@@ -1,9 +1,10 @@
 # coding: utf-8
 
 from subprocess import Popen, PIPE
-from .exceptions import *
+from exceptions import *
 import re
 import os
+from datetime import datetime
 
 
 class ShellCommand(object):
@@ -72,7 +73,7 @@ class Certmgr(ShellCommand):
 
     def _parse(self, text, limit=None):
         """
-        Преобразует текстовые данные в словарь
+        Парсит stdout. Возвращает список экземпляров класса Certificate
         """
         res = []
         sep = re.compile(r'\d+-{7}')
@@ -89,7 +90,7 @@ class Certmgr(ShellCommand):
                 key, val = self._get_key_and_val(line)
                 cert_data[key] = val
 
-            res.append(cert_data)
+            res.append(self._make_cert_object(cert_data))
 
             if limit and i == limit:
                 break
@@ -109,6 +110,33 @@ class Certmgr(ShellCommand):
             val = val.replace('0x', '')
 
         return key, val
+
+    @staticmethod
+    def _make_cert_object(data):
+        """
+        Преобразует словарь с данными сертификата в объект
+        """
+        cert = Certificate(
+            thumbprint=data['sha1_hash'],
+            serial=data['serial'],
+            valid_from=datetime.strptime(data['not_valid_before'], '%d/%m/%Y %H:%M:%S UTC'),
+            valid_to=datetime.strptime(data['not_valid_after'], '%d/%m/%Y %H:%M:%S UTC'),
+            issuer=data['issuer'],
+            subject=data['subject']
+        )
+        return cert
+
+
+class Certificate(object):
+    """Сертификат"""
+
+    def __init__(self, thumbprint, serial, valid_from, valid_to, issuer, subject):
+        self.thumbprint = thumbprint
+        self.serial = serial
+        self.valid_from = valid_from
+        self.valid_to = valid_to
+        self.issuer = issuer
+        self.subject = subject
 
 
 class Cryptcp(ShellCommand):
