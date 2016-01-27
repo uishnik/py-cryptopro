@@ -116,11 +116,15 @@ class Certmgr(ShellCommand):
         """
         Преобразует словарь с данными сертификата в объект
         """
+
+        def _str_to_datetime(string):
+            return datetime.strptime(string, '%d/%m/%Y %H:%M:%S UTC')
+
         cert = Certificate(
             thumbprint=data['sha1_hash'],
             serial=data['serial'],
-            valid_from=datetime.strptime(data['not_valid_before'], '%d/%m/%Y %H:%M:%S UTC'),
-            valid_to=datetime.strptime(data['not_valid_after'], '%d/%m/%Y %H:%M:%S UTC'),
+            valid_from=_str_to_datetime(data['not_valid_before']),
+            valid_to=_str_to_datetime(data['not_valid_after']),
             issuer=data['issuer'],
             subject=data['subject']
         )
