@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from subprocess import Popen, PIPE
-from exceptions import *
+from pycryptopro.exceptions import *
 import re
 import os
 from datetime import datetime
@@ -128,7 +128,9 @@ class Certmgr(ShellCommand):
 
 
 class Certificate(object):
-    """Сертификат"""
+    """
+    Сертификат
+    """
 
     def __init__(self, thumbprint, serial, valid_from, valid_to, issuer, subject):
         self.thumbprint = thumbprint
