@@ -24,6 +24,6 @@ cryptcp = Cryptcp()
 # подпись находится в каталоге /path/to/directory/with/signature
 cryptcp.verify(
     sgn_dir='/path/to/directory/with/signature',
-    cert_filename='/path/to/directory/with/signature/signature.sgn',
+    cert_filename='/path/to/directory/with/signature/file.txt.sgn',
     filename='/path/to/file.txt')
 ```
