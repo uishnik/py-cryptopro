@@ -20,7 +20,7 @@ certmgr.delete(thumbprint='8cae88bbfd404a7a53630864f9033606e1dc45e2', store='My'
 
 cryptcp = Cryptcp()
 
-# проверить отделенную подпись файла file.txt используя сертификат, хранящийся в подписи signature.sgn.
+# проверить отделенную подпись файла file.txt используя сертификат, хранящийся в подписи signature.sgn
 # подпись находится в каталоге /path/to/directory/with/signature
 cryptcp.verify(
     sgn_dir='/path/to/directory/with/signature',
