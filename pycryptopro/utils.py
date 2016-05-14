@@ -22,6 +22,7 @@ class ShellCommand(object):
         named_params = ' '.join(['-%s %s' % (k, v) for k, v in kwargs.items() if v is not None])
         cmd = ' '.join([self.binary, command, params, named_params])
         proc = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+
         return self._parse_response(*proc.communicate())
 
     def _parse_response(self, stdout, stderr):
@@ -63,7 +64,7 @@ class Certmgr(ShellCommand):
         """
         return self.run_command('-delete', **kwargs)
 
-    def get(self, thumbprint, store='My'):
+    def get(self, thumbprint, store='uMy'):
         """
         Возвращает информацию о сертификате
         """
@@ -81,13 +82,13 @@ class Certmgr(ShellCommand):
         for i, item in enumerate(sep.split(text)[1:], start=1):
             cert_data = {}
             for line in item.split('\n'):
-                if line == '':
+                if line == '' or ':' not in line:
                     continue
 
                 if line.startswith('=='):
                     break
 
-                key, val = self._get_key_and_val(line)
+                key, val = self._parse_line(line)
                 cert_data[key] = val
 
             res.append(self._make_cert_object(cert_data))
@@ -98,7 +99,7 @@ class Certmgr(ShellCommand):
         return res
 
     @staticmethod
-    def _get_key_and_val(line):
+    def _parse_line(line):
         """
         Преобразует строку в пару ключ:значение
         """
@@ -125,10 +126,35 @@ class Certmgr(ShellCommand):
             serial=data['serial'],
             valid_from=_str_to_datetime(data['not_valid_before']),
             valid_to=_str_to_datetime(data['not_valid_after']),
-            issuer=data['issuer'],
-            subject=data['subject']
+            issuer=PersonalInfo(data['issuer']),
+            subject=PersonalInfo(data['subject'])
         )
         return cert
+
+
+class PersonalInfo(object):
+    def __init__(self, line):
+        self.line = line
+
+    def as_string(self):
+        return self.line
+
+    def as_dict(self):
+        return self._parse(self.line)
+
+    @staticmethod
+    def _parse(line):
+        data = {}
+        for item in line.split(', '):
+            try:
+                k, v = item.split('=')
+                data[k] = v
+            except:
+                pass
+        return data
+
+    def __repr__(self):
+        return self.as_string()
 
 
 class Certificate(object):
@@ -159,26 +185,47 @@ class Cryptcp(ShellCommand):
 
         match = re.search(r'ErrorCode: (.+)]', stdout)
         if match:
-            error_code = match.group(1)
+            error_code = match.group(1).lower()
             if error_code == '0x20000133':
                 raise CertificateChainNotChecked(stdout)
 
-            if error_code == '0x200001F9':
+            if error_code in ('0x200001f9', '0x2000012d'):
                 raise InvalidSignature(stdout)
 
         raise ShellCommandError(stdout)
 
-    def vsignf(self, *args, **kwargs):
-        self.run_command('-vsignf', *args, **kwargs)
+    def sign(self, filename, thumbprint, cert=True):
+        """
+        Создает отделенную подпись файла.
+        Подпись создается в каталоге, в котором находится подписываемый файл.
+
+        :param filename: файл, для которого создается подпись
+        :param thumbprint: отпечаток сертификата, которым создается подпись
+        :param cert: включать или нет сертификат владельца  подпись
+        """
+
+        dirname = os.path.dirname(filename)
+
+        args = [filename]
+
+        if cert:
+            args.append('-cert')
+
+        kwargs = {
+            'dir': dirname,
+            'thumbprint': thumbprint
+        }
+
+        self.run_command('-signf', *args, **kwargs)
 
     def verify(self, sgn_dir, cert_filename, filename, errchain=True):
         """
-        Проверяет электронную подпись.
+        Проверяет отделенную электронную подпись.
 
         :param sgn_dir: путь к каталогу с подписью
         :param cert_filename: имя файла с сертификатом
         :param filename: имя подписываемого файла
-        :param errchain: кидать ошибку если не удалось проверить хотя бы один элемент цепочки
+        :param errchain: кидать ошибку если не удалось проверить цепочку сертификатов
         """
 
         file_path = os.path.join(sgn_dir, filename)
@@ -196,10 +243,8 @@ class Cryptcp(ShellCommand):
 
         try:
             self.run_command('-vsignf', *args, **kwargs)
-        except CertificateChainNotChecked:
-            return False
-
-        except InvalidSignature:
+        except (CertificateChainNotChecked, InvalidSignature):
             return False
 
         return True
+
