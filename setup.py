@@ -6,5 +6,6 @@ setup(
     description='',
     url='https://github.com/uishnik/py-cryptopro',
     author='uishnik',
-    license='MIT'
+    license='MIT',
+    packages=['pycryptopro'],
 )
