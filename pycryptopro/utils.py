@@ -201,7 +201,7 @@ class Cryptcp(ShellCommand):
 
         :param filename: файл, для которого создается подпись
         :param thumbprint: отпечаток сертификата, которым создается подпись
-        :param cert: включать или нет сертификат владельца  подпись
+        :param cert: включать или нет сертификат владельца в подпись
         """
 
         dirname = os.path.dirname(filename)
@@ -241,10 +241,4 @@ class Cryptcp(ShellCommand):
             'f': os.path.join(sgn_dir, cert_filename)
         }
 
-        try:
-            self.run_command('-vsignf', *args, **kwargs)
-        except (CertificateChainNotChecked, InvalidSignature):
-            return False
-
-        return True
-
+        self.run_command('-vsignf', *args, **kwargs)
