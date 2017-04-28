@@ -1,10 +1,13 @@
 # coding: utf-8
 
-from subprocess import Popen, PIPE
-from pycryptopro.exceptions import *
 import re
 import os
+
 from datetime import datetime
+from pycryptopro.exceptions import (
+    ShellCommandError, CertificateChainNotChecked, InvalidSignature, CertificatesNotFound
+)
+from subprocess import Popen, PIPE
 
 
 class ShellCommand(object):
@@ -186,13 +189,19 @@ class Cryptcp(ShellCommand):
         match = re.search(r'ErrorCode: (.+)]', stdout)
         if match:
             error_code = match.group(1).lower()
-            if error_code == '0x20000133':
-                raise CertificateChainNotChecked(stdout)
-
-            if error_code in ('0x200001f9', '0x2000012d'):
-                raise InvalidSignature(stdout)
+            exception_class = self._get_exception_class(error_code)
+            if exception_class:
+                raise exception_class(stdout)
 
         raise ShellCommandError(stdout)
+
+    def _get_exception_class(self, error_code):
+        exception_classes = {
+            '0x20000133': CertificateChainNotChecked,
+            '0x200001f9': InvalidSignature,
+            '0x2000012d': CertificatesNotFound
+        }
+        return exception_classes.get(error_code)
 
     def sign(self, filename, thumbprint, cert=True):
         """
@@ -218,7 +227,7 @@ class Cryptcp(ShellCommand):
 
         self.run_command('-signf', *args, **kwargs)
 
-    def verify(self, sgn_dir, cert_filename, filename, errchain=True, norev=False):
+    def verify(self, sgn_dir, cert_filename, filename, errchain=True, norev=False, dn=None):
         """
         Проверяет отделенную электронную подпись.
 
@@ -239,9 +248,19 @@ class Cryptcp(ShellCommand):
         if norev:
             args.append('-norev')
 
+        if dn is not None:
+            args.append('-dn \'{}\''.format(dn))
+
         kwargs = {
             'dir': sgn_dir,
             'f': os.path.join(sgn_dir, cert_filename)
         }
 
-        self.run_command('-vsignf', *args, **kwargs)
+        stdout = self.run_command('-vsignf', *args, **kwargs)
+        signer_data = self._get_signer_data(stdout)
+        return signer_data
+
+    def _get_signer_data(self, stdout):
+        pattern = r'Signer: (.*)'
+        m = re.search(pattern, stdout)
+        return m.group(1)
