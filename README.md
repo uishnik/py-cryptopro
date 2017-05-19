@@ -6,7 +6,7 @@ from pycryptopro.utils import Certmgr, Cryptcp
 
 certmgr = Certmgr()
 
-# список скртификатов в хранилище My
+# список сертификатов в хранилище My
 certificates = certmgr.list(store='My', limit=100)
 
 # установить сертификат
