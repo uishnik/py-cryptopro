@@ -11,3 +11,7 @@ class CertificateChainNotChecked(ShellCommandError):
 
 class InvalidSignature(ShellCommandError):
     """Подпись не верна"""
+
+
+class CertificatesNotFound(ShellCommandError):
+    """Сертификат не найден"""
